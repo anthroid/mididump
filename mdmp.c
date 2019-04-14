@@ -5,14 +5,16 @@
 //
 //	Created by Devin Palmer on 3/31/13.
 //
-//	todo: Remove printf calls from MIDI callback, modify callback to queue message
+//	To do: Remove printf calls from MIDI callback, modify callback to queue message
 //	to be printed by main process (or another thread), so as to not call blocking 
 //	functions from within the callback. Add message queueing mechanisms to support.
 //
+//	gcc mdmp.c -o bin/mdmp -framework CoreMIDI -framework CoreServices
 
 #include <CoreMIDI/MIDIServices.h>
 #include <CoreServices/CoreServices.h>
 #include <stdio.h>
+#include <signal.h>
 
 //	global constants
 
@@ -109,9 +111,17 @@ void mdmp_update(struct mdmp *sender) {
 	}
 }
 
+void mdmp_handle_sigint(int s) {
+	printf("\e[1;1H\e[2J");
+	fflush(stdout);
+}
+
 int main(int argc, char **argv) {
 	struct mdmp self;
+	
 	mdmp_init(&self);
+	printf("Press Ctrl-C to clear, Ctrl-\\ to quit\n");
+	signal(SIGINT, mdmp_handle_sigint);
 	
 	CFRunLoopRun();
 	return 0;
