@@ -3,67 +3,112 @@
 //
 //	Displays incoming MIDI messages
 //
-//	Created by Devin Palmer on 3/31/13.
+//	Created by Devin Palmer on 3/31/13
+//	Updated 10/26/2019
 //
-//	To do: Remove printf calls from MIDI callback, modify callback to queue message
-//	to be printed by main process (or another thread), so as to not call blocking 
-//	functions from within the callback. Add message queueing mechanisms to support.
-//
+//	Compile:
 //	gcc mdmp.c -o bin/mdmp -framework CoreMIDI -framework CoreServices
 
 #include <CoreMIDI/MIDIServices.h>
 #include <CoreServices/CoreServices.h>
 #include <stdio.h>
 #include <signal.h>
+#include <unistd.h>
 
-//	global constants
+//	Global constants
+#define SOURCE_NAME_MAX_STRLEN 255
+#define ESC_COLOR_MIDI_NOTE_ON "\033[32m"
+#define ESC_COLOR_MIDI_NOTE_OFF "\033[35m"
+#define ESC_COLOR_MIDI_CC "\033[36m"
+#define ESC_COLOR_MIDI_PB "\033[93m"
+#define ESC_COLOR_MIDI_AT "\033[94m"
+#define ESC_COLOR_RESET "\033[0m"
+#define ESC_CLEAR_OUTPUT "\e[1;1H\e[2J"
 
-#define SOURCE_NAME_STR_LEN 128
-#define MAX_NUM_SOURCES 16
+//	Structure declarations
 
-//	structure declarations
+//	Command line options
+typedef struct {
+	uint8_t opt_c;
+} mdmp_options_t;
 
-struct mdmp_endpoint {
+//	Endpoint references
+typedef struct {
 	MIDIEndpointRef endpoint;
 	char *description;
-};
+} mdmp_endpoint_t;
 
-struct mdmp_format {
-	int source_col_len;
-};
+//	Output format options
+typedef struct {
+	uint8_t source_col_len;
+	uint8_t color_output;
+} mdmp_format_t;
 
-struct mdmp {
+//	Application context
+typedef struct {
 	MIDIClientRef client;
 	MIDIPortRef port;
-	struct mdmp_endpoint *sources;
-	struct mdmp_format format;
-};
+	mdmp_options_t options;
+	mdmp_endpoint_t *sources;
+	mdmp_format_t format;
+	int16_t num_sources;
+} mdmp_context_t;
 
-//	function prototypes
-
+//	Function prototypes
 void mdmp_midi_notify_proc(const MIDINotification *message, void *sender);
 void mdmp_midi_read_proc(const MIDIPacketList *list, void *sender, void *source);
-void mdmp_init(struct mdmp *sender);
-void mdmp_update(struct mdmp *sender);
+void mdmp_init(mdmp_context_t *sender);
+void mdmp_config(int argc, char **argv, mdmp_context_t *sender);
+void mdmp_update(mdmp_context_t *sender);
+void mdmp_handle_sigint(int s);
+void mdmp_usage(void);
 
-//	function definitions
+//	Function definitions
 
+//	CoreMIDI notification callback
 void mdmp_midi_notify_proc(const MIDINotification *message, void *sender) {
-	struct mdmp *mdmp_ptr = (struct mdmp *)sender;
+	mdmp_context_t *self = (mdmp_context_t *)sender;
 	switch (message->messageID)
 	{
-			case 1:	mdmp_update(mdmp_ptr);
+			case 1:	mdmp_update(self);
 					break;
 	}
 }
 
+//	CoreMIDI read callback
 void mdmp_midi_read_proc(const MIDIPacketList *list, void *sender, void *source) {
 	int i, j;
+	mdmp_context_t *context = (mdmp_context_t*)sender;
+	mdmp_endpoint_t *endpoint = (mdmp_endpoint_t*)source;
+	
 	if (list->numPackets > 0) {
-		printf("%-*s: ", ((struct mdmp*)sender)->format.source_col_len, ((struct mdmp_endpoint*)source)->description);
+		printf("%-*s: ", context->format.source_col_len, endpoint->description);
 		for (i = 0; i < list->numPackets; i++) {
 			if (list->packet[i].length > 0) {
 				for (j = 0; j < list->packet[i].length; j++) {
+					//	Color status bytes if option is enabled
+					if (context->format.color_output) {
+						switch (list->packet[i].data[j] & 0xF0) {
+							case 0x90:
+								printf(ESC_COLOR_MIDI_NOTE_ON);
+								break;
+							case 0x80:
+								printf(ESC_COLOR_MIDI_NOTE_OFF);
+								break;
+							case 0xb0:
+								printf(ESC_COLOR_MIDI_CC);
+								break;
+							case 0xd0:
+								printf(ESC_COLOR_MIDI_AT);
+								break;
+							case 0xe0:
+								printf(ESC_COLOR_MIDI_PB);
+								break;
+							default:
+								printf(ESC_COLOR_RESET);
+								break;
+						}
+					}
 					printf("%2x ", list->packet[i].data[j]);
 				}
 				printf("\n");
@@ -72,57 +117,184 @@ void mdmp_midi_read_proc(const MIDIPacketList *list, void *sender, void *source)
 	}
 }
 
-void mdmp_init(struct mdmp *sender) {
-	MIDIClientCreate(CFSTR("mdmp"), mdmp_midi_notify_proc, (void*)sender, &(sender->client));
-	MIDIInputPortCreate(sender->client, CFSTR("IN"), mdmp_midi_read_proc, (void*)sender, &(sender->port));
+//	Initialize MIDI ports
+void mdmp_init(mdmp_context_t *sender) {
+	//	Create MIDI client
+	MIDIClientCreate(CFSTR("mdmp"), mdmp_midi_notify_proc,
+		(void*)sender,
+		&(sender->client)
+	);
+	
+	//	Create input port
+	MIDIInputPortCreate(sender->client, CFSTR("IN"), mdmp_midi_read_proc,
+		(void*)sender,
+		&(sender->port)
+	);
+	
+	//	Initialize context variables
 	sender->format.source_col_len = 0;
+	sender->num_sources = 0;
+	
+	//	Enumerate MIDI ports
 	mdmp_update(sender);
 }
 
-void mdmp_update(struct mdmp *sender) {
-	int i = 0, len = 0, num_sources = MIDIGetNumberOfSources();
-	sender->sources = malloc(num_sources * sizeof(struct mdmp_endpoint));
-	CFStringRef cfstr;
-	char *cstr = malloc(SOURCE_NAME_STR_LEN * sizeof(char));
+void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
+	int i;
 	
-	if (num_sources < 1) {
+	//	Exit if wrong argument count
+	if (argc > 2) {
+		mdmp_usage();
+		exit(-1);
+	}
+	
+	//	Initialize options data structure
+	memset((void*)&sender->options, 0, sizeof(mdmp_options_t));
+	
+	//	Parse command line options
+	while ((i = getopt(argc, argv, "c")) != -1) {
+		switch (i) {
+			case 'c':
+				sender->options.opt_c = 1;
+				break;
+			case '?':
+				switch (optopt) {
+					default:
+						printf("Unknown option '%c'\n", optopt);
+						break;
+				}
+				exit(-1);
+			default:
+				printf("Error parsing command line options\n");
+				mdmp_usage();
+				exit(-1);
+		}
+	}
+	
+	//	Color output
+	if (sender->options.opt_c) {
+		sender->format.color_output = 1;
+	}
+}
+
+//	Update MIDI source list
+void mdmp_update(mdmp_context_t *sender) {
+	int i = 0, j = 0, len = 0;
+	CFStringRef cfstr;
+	
+	//	Disconnect and initialize any previously allocated sources
+	for (i = 0; i < sender->num_sources; i++) {
+		if (sender->sources[i].description != NULL) {
+			free(sender->sources[i].description);
+			sender->sources[i].description = NULL;
+		}
+		if (sender->sources[i].endpoint) {
+			MIDIPortDisconnectSource(sender->port, sender->sources[i].endpoint);
+			sender->sources[i].endpoint = 0;
+		}
+	}
+	
+	//	Allocate memory for new source list
+	sender->num_sources = MIDIGetNumberOfSources();
+	sender->sources = realloc(sender->sources, sender->num_sources * sizeof(mdmp_endpoint_t));
+	memset((void*)sender->sources, 0, sender->num_sources * sizeof(mdmp_endpoint_t));
+	
+	//	Build MIDI source list and connect to each source
+	if (sender->num_sources < 1) {
 		printf("No MIDI sources available.\n");
+		return;
 	}
 	else {
-		for (i = 0; i < num_sources; i++) {
+		for (i = 0; i < sender->num_sources; i++) {
 			sender->sources[i].endpoint = MIDIGetSource(i);
-			sender->sources[i].description = malloc(SOURCE_NAME_STR_LEN * sizeof(char));
+			sender->sources[i].description = malloc(SOURCE_NAME_MAX_STRLEN * sizeof(char));
 			
-			MIDIObjectGetStringProperty(sender->sources[i].endpoint, kMIDIPropertyDisplayName, &cfstr);
-			CFStringGetCString(cfstr, sender->sources[i].description, SOURCE_NAME_STR_LEN, kCFStringEncodingASCII);
+			MIDIObjectGetStringProperty(sender->sources[i].endpoint, kMIDIPropertyName, &cfstr);
+			CFStringGetCString(cfstr, 
+				sender->sources[i].description,
+				SOURCE_NAME_MAX_STRLEN,
+				kCFStringEncodingASCII
+			);
 			
-			len = strlen(sender->sources[i].description);
+			//	Adjust source name column to length of longest source name
+			len = strnlen(sender->sources[i].description, SOURCE_NAME_MAX_STRLEN);
 			if (len > sender->format.source_col_len) {
-				if (len > SOURCE_NAME_STR_LEN) {
-					sender->format.source_col_len = SOURCE_NAME_STR_LEN;
+				if (len > SOURCE_NAME_MAX_STRLEN) {
+					sender->format.source_col_len = SOURCE_NAME_MAX_STRLEN;
 				} else {
 					sender->format.source_col_len = len;
 				}
 			}
 			
-			MIDIPortConnectSource(sender->port, sender->sources[i].endpoint, (void*)&(sender->sources[i]));
-			printf("Connected source %i: %s\n", i, sender->sources[i].description);
+			MIDIPortConnectSource(
+				sender->port,
+				sender->sources[i].endpoint,
+				(void*)&(sender->sources[i])
+			);
 		}
+	}
+	
+	//	Check for uniqueness, prepend kMIDIPropertyModel if a match is found
+	for (i = 0; i < sender->num_sources; i++) {
+		for (j = i + 1; j < sender->num_sources; j++) {
+			if (strncmp(sender->sources[i].description, sender->sources[j].description,
+					SOURCE_NAME_MAX_STRLEN) == 0) {
+				char *a, *b;
+				
+				a = malloc(SOURCE_NAME_MAX_STRLEN * sizeof(char));
+				b = strndup(sender->sources[i].description, SOURCE_NAME_MAX_STRLEN);
+				
+				MIDIObjectGetStringProperty(
+					sender->sources[i].endpoint, kMIDIPropertyModel, &cfstr);
+				CFStringGetCString(
+					cfstr, a, SOURCE_NAME_MAX_STRLEN, kCFStringEncodingASCII);
+				snprintf(sender->sources[i].description,
+					SOURCE_NAME_MAX_STRLEN, "%s %s", a, b);
+				
+				free(a);
+				free(b);
+				
+				//	Adjust source name column to length of longest source name
+				len = strnlen(sender->sources[i].description, SOURCE_NAME_MAX_STRLEN);
+				if (len > sender->format.source_col_len) {
+					if (len > SOURCE_NAME_MAX_STRLEN) {
+						sender->format.source_col_len = SOURCE_NAME_MAX_STRLEN;
+					} else {
+						sender->format.source_col_len = len;
+					}
+				}
+			}
+		}
+	}
+	
+	//	List all MIDI sources
+	for (i = 0; i < sender->num_sources; i++) {
+		printf("Connected source %i: %s\n", i, sender->sources[i].description);
 	}
 }
 
+//	Handle SIGINT signal
 void mdmp_handle_sigint(int s) {
-	printf("\e[1;1H\e[2J");
+	//	Clear output
+	printf(ESC_CLEAR_OUTPUT);
 	fflush(stdout);
 }
 
+//	Print usage
+void mdmp_usage(void) {
+	printf(
+		"Usage:\n"
+		"-c Color output\n"
+	);
+}
+
+//	Main application loop
 int main(int argc, char **argv) {
-	struct mdmp self;
-	
+	mdmp_context_t self;
+	signal(SIGINT, mdmp_handle_sigint);
+	mdmp_config(argc, argv, &self);
 	mdmp_init(&self);
 	printf("Press Ctrl-C to clear, Ctrl-\\ to quit\n");
-	signal(SIGINT, mdmp_handle_sigint);
-	
 	CFRunLoopRun();
 	return 0;
 }
