@@ -29,7 +29,7 @@
 
 //	Command line options
 typedef struct {
-	uint8_t opt_s, opt_c, opt_x, opt_z;
+	uint8_t opt_s, opt_c, opt_d, opt_z;
 } mdmp_options_t;
 
 //	Endpoint references
@@ -178,7 +178,7 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	memset((void*)&sender->options, 0, sizeof(mdmp_options_t));
 	
 	//	Parse command line options
-	while ((i = getopt(argc, argv, "scxz")) != -1) {
+	while ((i = getopt(argc, argv, "scdz")) != -1) {
 		switch (i) {
 			case 's':
 				sender->options.opt_s = 1;
@@ -186,8 +186,8 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 			case 'c':
 				sender->options.opt_c = 1;
 				break;
-			case 'x':
-				sender->options.opt_x = 1;
+			case 'd':
+				sender->options.opt_d = 1;
 				break;
 			case 'z':
 				sender->options.opt_z = 1;
@@ -208,7 +208,7 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	
 	//	Set default output format if invoked without any display options
 	if ((sender->options.opt_s | sender->options.opt_c | 
-		 sender->options.opt_x | sender->options.opt_z) == 0) {
+		 sender->options.opt_d | sender->options.opt_z) == 0) {
 		sender->options.opt_c = 1;
 	}
 	
@@ -223,7 +223,7 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	}
 	
 	//	Decimal output
-	if (sender->options.opt_x) {
+	if (sender->options.opt_d) {
 		sender->format.decimal = 1;
 	}
 	
