@@ -15,6 +15,9 @@
 #include <signal.h>
 #include <unistd.h>
 
+//	Macro definitions
+#define unless(x) if (!(x))
+
 //	Global constants
 #define SOURCE_NAME_MAX_STRLEN 255
 #define ESC_COLOR_MIDI_NOTE_ON "\033[32m"
@@ -178,7 +181,7 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	memset((void*)&sender->options, 0, sizeof(mdmp_options_t));
 	
 	//	Parse command line options
-	while ((i = getopt(argc, argv, "scdz")) != -1) {
+	while ((i = getopt(argc, argv, "scdzh")) != -1) {
 		switch (i) {
 			case 's':
 				sender->options.opt_s = 1;
@@ -192,6 +195,9 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 			case 'z':
 				sender->options.opt_z = 1;
 				break;
+			case 'h':
+				mdmp_usage();
+				exit(0);
 			case '?':
 				switch (optopt) {
 					default:
@@ -340,7 +346,11 @@ void mdmp_handle_sigint(int s) {
 void mdmp_usage(void) {
 	printf(
 		"Usage:\n"
-		"-c Color output\n"
+		"-s  Single line output\n"
+		"-c  Color output\n"
+		"-d  Decimal output\n"
+		"-z  Zero prefixed output\n"
+		"-h  Show command help\n"
 	);
 }
 
