@@ -29,7 +29,7 @@
 
 //	Command line options
 typedef struct {
-	uint8_t opt_c;
+	uint8_t opt_s, opt_c, opt_x, opt_z;
 } mdmp_options_t;
 
 //	Endpoint references
@@ -41,7 +41,10 @@ typedef struct {
 //	Output format options
 typedef struct {
 	uint8_t source_col_len;
+	uint8_t single_line;
 	uint8_t color_output;
+	uint8_t decimal;
+	uint8_t zero_prefix;
 } mdmp_format_t;
 
 //	Application context
@@ -82,6 +85,10 @@ void mdmp_midi_read_proc(const MIDIPacketList *list, void *sender, void *source)
 	mdmp_endpoint_t *endpoint = (mdmp_endpoint_t*)source;
 	
 	if (list->numPackets > 0) {
+		//	Clear screen if single line option is enabled
+		if (context->format.single_line) {
+			printf(ESC_CLEAR_OUTPUT);
+		}
 		printf("%-*s: ", context->format.source_col_len, endpoint->description);
 		for (i = 0; i < list->numPackets; i++) {
 			if (list->packet[i].length > 0) {
@@ -109,7 +116,26 @@ void mdmp_midi_read_proc(const MIDIPacketList *list, void *sender, void *source)
 								break;
 						}
 					}
-					printf("%2x ", list->packet[i].data[j]);
+					//	Print byte to terminal
+					if (context->format.zero_prefix) {
+						//	Print zero prefixed
+						if (context->format.decimal) {
+							//	Zero prefixed, decimal
+							printf("%03d ", list->packet[i].data[j]);
+						} else {
+							//	Zero prefixed, hexadecimal
+							printf("%02x ", list->packet[i].data[j]);
+						}
+					} else {
+						//	Print right aligned
+						if (context->format.decimal) {
+							//	Right aligned, decimal
+							printf("%3d ", list->packet[i].data[j]);
+						} else {
+							//	Right aligned, hexadecimal
+							printf("%2x ", list->packet[i].data[j]);
+						}
+					}
 				}
 				printf("\n");
 			}
@@ -152,10 +178,19 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	memset((void*)&sender->options, 0, sizeof(mdmp_options_t));
 	
 	//	Parse command line options
-	while ((i = getopt(argc, argv, "c")) != -1) {
+	while ((i = getopt(argc, argv, "scxz")) != -1) {
 		switch (i) {
+			case 's':
+				sender->options.opt_s = 1;
+				break;
 			case 'c':
 				sender->options.opt_c = 1;
+				break;
+			case 'x':
+				sender->options.opt_x = 1;
+				break;
+			case 'z':
+				sender->options.opt_z = 1;
 				break;
 			case '?':
 				switch (optopt) {
@@ -171,9 +206,30 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 		}
 	}
 	
+	//	Set default output format if invoked without any display options
+	if ((sender->options.opt_s | sender->options.opt_c | 
+		 sender->options.opt_x | sender->options.opt_z) == 0) {
+		sender->options.opt_c = 1;
+	}
+	
+	//	Single line output
+	if (sender->options.opt_s) {
+		sender->format.single_line = 1;
+	}
+	
 	//	Color output
 	if (sender->options.opt_c) {
 		sender->format.color_output = 1;
+	}
+	
+	//	Decimal output
+	if (sender->options.opt_x) {
+		sender->format.decimal = 1;
+	}
+	
+	//	Zero prefix
+	if (sender->options.opt_z) {
+		sender->format.zero_prefix = 1;
 	}
 }
 
