@@ -1,13 +1,7 @@
 //
 //	mdmp.c
 //
-//	Displays incoming MIDI messages
-//
-//	Created by Devin Palmer on 3/31/13
-//	Updated 10/26/2019
-//
-//	Compile:
-//	gcc mdmp.c -o bin/mdmp -framework CoreMIDI -framework CoreServices
+//	Command line utility to display incoming MIDI messages
 
 #include <CoreMIDI/MIDIServices.h>
 #include <CoreServices/CoreServices.h>
@@ -335,13 +329,6 @@ void mdmp_update(mdmp_context_t *sender) {
 	}
 }
 
-//	Handle SIGINT signal
-void mdmp_handle_sigint(int s) {
-	//	Clear output
-	printf(ESC_CLEAR_OUTPUT);
-	fflush(stdout);
-}
-
 //	Print usage
 void mdmp_usage(void) {
 	printf(
@@ -357,10 +344,9 @@ void mdmp_usage(void) {
 //	Main application loop
 int main(int argc, char **argv) {
 	mdmp_context_t self;
-	signal(SIGINT, mdmp_handle_sigint);
 	mdmp_config(argc, argv, &self);
 	mdmp_init(&self);
-	printf("Press Ctrl-C to clear, Ctrl-\\ to quit\n");
+	printf("Press Ctrl-C to quit, Cmd-K to clear\n");
 	CFRunLoopRun();
 	return 0;
 }
