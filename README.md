@@ -3,15 +3,15 @@
 Command line MIDI monitor utility for macOS
 
 ![Screenshot](https://raw.githubusercontent.com/anthroid/mididump/master/images/mididump-screenshot.png)
-
 ## Usage
 
-Argument | Option
---- | ---
-`-c` | Color output
-`-d` | Output in decimal format (defaults to hexadecimal)
-`-z` | Zero prefix output
-`-s` | Single-line output
+Argument | Option | Comment
+--- | --- | ---
+`-c` | Color output | default: `on`
+`-d` | Decimal format | default: `off` (hexadecimal)
+`-z` | Zero prefix output | default: `off`
+`-s` | Single-line output | default: `off`
+`-h` | Help | Display comment usage
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ $ ln -s ./bin/mididump /usr/local/bin/mididump
 
 ## Examples
 
-Default output format (hexadecimal, not zero prefixed)
+Default output format (color, hexadecimal, not zero prefixed)
 ```
 $ mididump
 ```
@@ -53,6 +53,11 @@ Decimal output, zero prefixed:
 $ mididump -dz
 ```
 
+Zero-prefixed, color output:
+```
+$ mididump -zc
+```
+
 ## Notes
 
-* I have not tested extensively on any platforms other than macOS 10.12+. Nonetheless, no special frameworks or functionality is used, so it should run on any version of macOS in theory.
+* I have not tested extensively on any platforms other than macOS 10.12+. Nonetheless, no special frameworks or functionality are used, so it should run on any version of macOS (in theory).
