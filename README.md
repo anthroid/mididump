@@ -22,10 +22,10 @@ The program is entirely contained within a single source (`src/mididump.c`), so 
 $ gcc ./src/mididump.c -o ./bin/mididump -framework CoreMIDI -framework CoreServices
 ```
 Or use the makefile:
-To build: `make`
-To clean the build directory: `make clean`
-To see which commands will be run by `make`: `make -n all`
-To print the makefile variables: `make print`
+* To build: `make`
+* To clean the build directory: `make clean`
+* To see which commands will be run by `make`: `make -n all`
+* To print the makefile variables: `make print`
 
 ## Installing
 
