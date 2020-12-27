@@ -1,12 +1,11 @@
 //
-//	mdmp.c
+//	mididump.c
 //
 //	Command line utility to display incoming MIDI messages
 
 #include <CoreMIDI/MIDIServices.h>
 #include <CoreServices/CoreServices.h>
 #include <stdio.h>
-#include <signal.h>
 #include <unistd.h>
 
 //	Macro definitions
@@ -70,8 +69,9 @@ void mdmp_midi_notify_proc(const MIDINotification *message, void *sender) {
 	mdmp_context_t *self = (mdmp_context_t *)sender;
 	switch (message->messageID)
 	{
-			case 1:	mdmp_update(self);
-					break;
+			case kMIDIMsgSetupChanged:
+				mdmp_update(self);
+				break;
 	}
 }
 
