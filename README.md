@@ -2,6 +2,8 @@
 
 Command line MIDI monitor utility for macOS
 
+![Screenshot](https://raw.githubusercontent.com/anthroid/mididump/master/images/mididump-screenshot.png)
+
 ## Usage
 
 Argument | Option
