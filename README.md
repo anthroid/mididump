@@ -4,8 +4,8 @@ Command line MIDI monitor utility for macOS
 
 ## Usage
 
-Argument | Option | Comment
---- | --- | ---
+Argument | Option
+--- | ---
 `-c` | Color output
 `-d` | Output in decimal format (defaults to hexadecimal)
 `-z` | Zero prefix output
