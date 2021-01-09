@@ -7,8 +7,12 @@ Command line MIDI monitor utility for macOS
 
 Argument | Option | Comment
 --- | --- | ---
-`-c` | Color output | default: `on`
+`-c` | Color | default: `on`
 `-d` | Decimal format | default: `off` (hexadecimal)
+`-m` | Source number | default: `off`
+`-n` | Source name | default: `on`
+`-t` | Timestamp | default: `off`
+`-x` | Extended format | default: `off`
 `-z` | Zero prefix output | default: `off`
 `-s` | Single-line output | default: `off`
 `-h` | Help | Display comment usage

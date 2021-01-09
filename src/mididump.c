@@ -18,6 +18,7 @@
 #define ESC_COLOR_MIDI_CC "\033[36m"
 #define ESC_COLOR_MIDI_PB "\033[93m"
 #define ESC_COLOR_MIDI_AT "\033[94m"
+#define ESC_COLOR_SOURCE "\033[36m"
 #define ESC_COLOR_RESET "\033[0m"
 #define ESC_CLEAR_OUTPUT "\e[1;1H\e[2J"
 
@@ -25,21 +26,26 @@
 
 //	Command line options
 typedef struct {
-	uint8_t opt_s, opt_c, opt_d, opt_z;
+	uint8_t opt_s, opt_c, opt_d, opt_m, opt_n, opt_t, opt_x, opt_z;
 } mdmp_options_t;
 
 //	Endpoint references
 typedef struct {
 	MIDIEndpointRef endpoint;
 	char *description;
+	int id;
 } mdmp_endpoint_t;
 
 //	Output format options
 typedef struct {
 	uint8_t source_col_len;
+	uint8_t source_num_len;
 	uint8_t single_line;
 	uint8_t color_output;
 	uint8_t decimal;
+	uint8_t source_number;
+	uint8_t source_name;
+	uint8_t timestamp;
 	uint8_t zero_prefix;
 } mdmp_format_t;
 
@@ -64,6 +70,19 @@ void mdmp_usage(void);
 
 //	Function definitions
 
+void mdmp_print_timestamp() {
+	struct timespec ts;
+	struct tm *tm;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	tm = localtime(&ts.tv_sec);
+	printf("%02d:%02d:%02d.%06ld  ",
+		tm->tm_hour,
+		tm->tm_min,
+		tm->tm_sec,
+		ts.tv_nsec / 1000
+	);
+}
+
 //	CoreMIDI notification callback
 void mdmp_midi_notify_proc(const MIDINotification *message, void *sender) {
 	mdmp_context_t *self = (mdmp_context_t *)sender;
@@ -82,11 +101,37 @@ void mdmp_midi_read_proc(const MIDIPacketList *list, void *sender, void *source)
 	mdmp_endpoint_t *endpoint = (mdmp_endpoint_t*)source;
 	
 	if (list->numPackets > 0) {
+		
 		//	Clear screen if single line option is enabled
 		if (context->format.single_line) {
 			printf(ESC_CLEAR_OUTPUT);
 		}
-		printf("%-*s: ", context->format.source_col_len, endpoint->description);
+		
+		//	Print timestamp
+		if (context->format.timestamp) {
+			mdmp_print_timestamp();
+		}
+		
+		//	Print source number
+		if (context->format.source_number) {
+			if (context->format.color_output) {
+				printf("%s%*d%s: ",
+					ESC_COLOR_SOURCE,
+					context->format.source_num_len,
+					endpoint->id,
+					ESC_COLOR_RESET
+				);
+			} else {
+				printf("%*d: ", context->format.source_num_len, endpoint->id);
+			}
+		}
+		
+		//	Print source name
+		if (context->format.source_name) {
+			printf("%-*s: ", context->format.source_col_len, endpoint->description);
+		}
+		
+		//	Print formatted packet data
 		for (i = 0; i < list->numPackets; i++) {
 			if (list->packet[i].length > 0) {
 				for (j = 0; j < list->packet[i].length; j++) {
@@ -155,7 +200,8 @@ void mdmp_init(mdmp_context_t *sender) {
 	);
 	
 	//	Initialize context variables
-	sender->format.source_col_len = 0;
+	sender->format.source_num_len = 0;
+	sender->format.source_num_len = 0;
 	sender->num_sources = 0;
 	
 	//	Enumerate MIDI ports
@@ -175,7 +221,7 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	memset((void*)&sender->options, 0, sizeof(mdmp_options_t));
 	
 	//	Parse command line options
-	while ((i = getopt(argc, argv, "scdzh")) != -1) {
+	while ((i = getopt(argc, argv, "scdmntxzh")) != -1) {
 		switch (i) {
 			case 's':
 				sender->options.opt_s = 1;
@@ -185,6 +231,18 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 				break;
 			case 'd':
 				sender->options.opt_d = 1;
+				break;
+			case 'm':
+				sender->options.opt_m = 1;
+				break;
+			case 'n':
+				sender->options.opt_n = 1;
+				break;
+			case 't':
+				sender->options.opt_t = 1;
+				break;
+			case 'x':
+				sender->options.opt_x = 1;
 				break;
 			case 'z':
 				sender->options.opt_z = 1;
@@ -207,9 +265,22 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	}
 	
 	//	Set default output format if invoked without any display options
-	if ((sender->options.opt_s | sender->options.opt_c | 
-		 sender->options.opt_d | sender->options.opt_z) == 0) {
+	if ((
+		sender->options.opt_s | sender->options.opt_c | 
+		sender->options.opt_d | sender->options.opt_m |
+		sender->options.opt_n | sender->options.opt_t |
+		sender->options.opt_z) == 0) {
 		sender->options.opt_c = 1;
+		sender->options.opt_n = 1;
+	}
+	
+	//	Set extended format
+	if (sender->options.opt_x) {
+		sender->format.color_output = 1;
+		sender->format.source_number = 1;
+		sender->format.source_name = 1;
+		sender->format.timestamp = 1;
+		sender->format.zero_prefix = 1;
 	}
 	
 	//	Single line output
@@ -225,6 +296,21 @@ void mdmp_config(int argc, char **argv, mdmp_context_t *sender) {
 	//	Decimal output
 	if (sender->options.opt_d) {
 		sender->format.decimal = 1;
+	}
+	
+	//	Source number
+	if (sender->options.opt_m) {
+		sender->format.source_number = 1;
+	}
+	
+	//	Source name
+	if (sender->options.opt_n) {
+		sender->format.source_name = 1;
+	}
+	
+	//	Timestamp
+	if (sender->options.opt_t) {
+		sender->format.timestamp = 1;
 	}
 	
 	//	Zero prefix
@@ -248,6 +334,7 @@ void mdmp_update(mdmp_context_t *sender) {
 			MIDIPortDisconnectSource(sender->port, sender->sources[i].endpoint);
 			sender->sources[i].endpoint = 0;
 		}
+		sender->sources[i].id = 0;
 	}
 	
 	//	Allocate memory for new source list
@@ -261,9 +348,15 @@ void mdmp_update(mdmp_context_t *sender) {
 		return;
 	}
 	else {
+		//	Set source number column width
+		sender->format.source_num_len =
+			(sender->num_sources < 10) ? 1 : (sender->num_sources < 100) ? 2 : 3;
+		
+		//	Configure and connect each source
 		for (i = 0; i < sender->num_sources; i++) {
 			sender->sources[i].endpoint = MIDIGetSource(i);
 			sender->sources[i].description = malloc(SOURCE_NAME_MAX_STRLEN * sizeof(char));
+			sender->sources[i].id = i;
 			
 			MIDIObjectGetStringProperty(sender->sources[i].endpoint, kMIDIPropertyName, &cfstr);
 			CFStringGetCString(cfstr, 
@@ -325,7 +418,11 @@ void mdmp_update(mdmp_context_t *sender) {
 	
 	//	List all MIDI sources
 	for (i = 0; i < sender->num_sources; i++) {
-		printf("Connected source %i: %s\n", i, sender->sources[i].description);
+		printf(
+			"Connected source %i: %s\n", 
+			sender->sources[i].id,
+			sender->sources[i].description
+		);
 	}
 }
 
@@ -333,10 +430,13 @@ void mdmp_update(mdmp_context_t *sender) {
 void mdmp_usage(void) {
 	printf(
 		"Usage:\n"
-		"-s  Single line output\n"
-		"-c  Color output\n"
-		"-d  Decimal output\n"
-		"-z  Zero prefixed output\n"
+		"-s  Single line\n"
+		"-c  Color\n"
+		"-d  Decimal format\n"
+		"-m  Source number\n"
+		"-n  Source name\n"
+		"-t  Timestamp\n"
+		"-z  Zero prefix\n"
 		"-h  Show command help\n"
 	);
 }
