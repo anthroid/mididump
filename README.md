@@ -15,7 +15,7 @@ Argument | Option | Comment
 `-x` | Extended format | default: `off`
 `-z` | Zero prefix output | default: `off`
 `-s` | Single-line output | default: `off`
-`-h` | Help | Display comment usage
+`-h` | Help | Display command usage
 
 ## Prerequisites
 
